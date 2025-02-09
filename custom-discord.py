@@ -35,9 +35,9 @@ def send_alert(hook_url, content, title, color, description, fields):
         "embeds": [
             {
                 "title": title,
-                    "color": color,
-                    "description": description,
-                    "fields": fields
+                "color": color,
+                "description": description,
+                "fields": fields
             }
         ]
     })
@@ -57,7 +57,7 @@ def get_time():
 
 
 
-debug(f"\n{'#'*100}\n")
+debug(f"\n\n\n{'#'*200}\n")
 
 # DEBUG: Look at input argument
 for i, arg in enumerate(sys.argv):
@@ -78,6 +78,9 @@ debug(f"\n\n{'#'*30}\nrule_id: {rule_id}\n{'#'*30}\n")
 
 # extract alert level
 alert_level = int(alert_json["rule"]["level"])
+
+# extract rule description
+rule_description = alert_json["rule"]["description"]
 
 # extract agent details
 if "agentless" in alert_json:
@@ -108,8 +111,7 @@ elif location:
 else:
     received_from = "N/A"
 
-
-# set message color (based on alert level)
+# Set message color (based on alert level)
 ## colors from https://gist.github.com/thomasbnt/b6f455e2c7d743b796917fa3c205f812
 if(alert_level < 5):
     color = colors.GREEN
@@ -123,36 +125,65 @@ if (rule_id == 100009 or rule_id == 100006):
     color = colors.RED
 
 # combine message details
-payload = json.dumps({
+## max description lenght: 4096 char - Source: https://discord.com/developers/docs/resources/message
+if (len(str(alert_json)) > 4096):
+    debug("L'alert che si voleva inviare è più lunga di 4096 char quindi verranno inviate solo le parti principali\n")
+    tmp_alert_json = {}
+    tmp_alert_json['too_long_alert'] = "Nella seguente alert vengono mostrate solo le parti salienti in quanto il messaggio eccedeva la dimensione massima consentita da Discord (4096 char)"
+    tmp_alert_json['timestamp'] = alert_json['timestamp']
+
+    if (len(alert_json['full_log']) > 3886): # 4096 - 210 char (len fissa struttura)
+        debug("Anche la sola field alert_json['full_log'] è più lunga di 4096 char quindi non verrà inviata\n")
+        tmp_alert_json['decoder'] = alert_json['decoder']
+        tmp_alert_json['id'] = alert_json['id']
+    else:
+        tmp_alert_json['full_log'] = alert_json['full_log']
+
+    debug(f"tmp_alert_json: {tmp_alert_json}\n")
+    alert_json = tmp_alert_json
+    debug(f"NUOVA alert_json: {alert_json}\n")
+
+debug(f"Description alert (alert_json): {str(alert_json)}\n\nlen(str(alert_json)): {len(str(alert_json))}")
+
+try:
+    payload = json.dumps({
     "content": "",
     "embeds": [
         {
-            "title": f"Wazuh Alert - Rule {alert_json['rule']['id']}",
-                "color": color,
-                "description": str(alert_json),
-                "fields": [{
-                    "name": "Agent",
-                    "value": agent_,
-                    "inline": True
-                },
-                {
-                    "name": "Alert level",
-                    "value": alert_level,
-                    "inline": True
-                },
-                {
-                    "name": "Received from",
-                    "value": received_from,
-                    "inline": True
-                },
-                {
-                    "name": "Description",
-                    "value": alert_json["rule"]["description"],
-                    "inline": False
-                }]
+            "title": f"Wazuh Alert - Rule {rule_id}",
+            "color": color,
+            "description": str(alert_json),
+            "fields": [{
+                "name": "Agent",
+                "value": agent_,
+                "inline": True
+            },
+            { 
+                "name": "Alert level",
+                "value": alert_level,
+                "inline": True
+            },
+            { 
+                "name": "Received from",
+                "value": received_from,
+                "inline": True
+            },
+            {
+                "name": "Description",
+                "value": rule_description,
+                "inline": False
+            }]
         }
     ]
-})
+    })
+except Exception as e:
+    if rule_id:
+        error = f"{get_time()} ERRORE: Non si è riusciti a inviare l'alert a Discord per la rule {rule_id}.\nErrore durante la costruzione del payload: {e}"
+    else:
+        error = f"{get_time()} ERRORE: Non si è riusciti a inviare l'alert a Discord.\nErrore durante la costruzione del payload: {e}"
+
+    debug(error)
+    send_alert(hook_url, "", "Errore invio alert!", colors.RED, error, [{"name": "Full error","value": str(e),"inline": False},{"name": "Hint","value": "Guarda il log in `/var/ossec/logs/integrations.log`","inline": False}])
 
 debug(f"payload: {payload}\n")
 
@@ -163,9 +194,9 @@ try:
     r.raise_for_status()
 except requests.RequestException as e:
     if rule_id:
-        error = f"{get_time()} ERRORE: Non si e' riusciti a inviare l'alert a Discord per la rule {rule_id}."
+        error = f"{get_time()} ERRORE: Non si è riusciti a inviare l'alert a Discord per la rule {rule_id}."
     else:
-        error = f"{get_time()} ERRORE: Non si e' riusciti a inviare l'alert a Discord."
+        error = f"{get_time()} ERRORE: Non si è riusciti a inviare l'alert a Discord."
 
     debug(f"{error}\nFull error: {str(e)}\n")
     send_alert(hook_url, "", "Errore invio alert!", colors.RED, error, [{"name": "Full error","value": str(e),"inline": False},{"name": "Hint","value": "Guarda il log in `/var/ossec/logs/integrations.log`","inline": False}])
