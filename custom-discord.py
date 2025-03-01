@@ -76,6 +76,10 @@ with open(alert_file) as f:
 rule_id = int(alert_json["rule"]["id"])
 debug(f"\n\n{'#'*30}\nrule_id: {rule_id}\n{'#'*30}\n")
 
+if (rule_id == 100015 or rule_id == 100011 or rule_id == 100008):
+    debug("Trovate regole scraping social con DANGER_LEVEL='INFO'. Skip invio notifica Discord...")
+    sys.exit(0)
+
 # extract alert level
 alert_level = int(alert_json["rule"]["level"])
 
@@ -120,8 +124,8 @@ elif(alert_level >= 5 and alert_level <= 7):
 else:
     color = colors.RED
 
-# set color for specific alert
-if (rule_id == 100009 or rule_id == 100006):
+# set color for specific alert (regole con DANGER_LEVEL='DANGER')
+if (rule_id == 100013 or rule_id == 100009 or rule_id == 100006):
     color = colors.RED
 
 # combine message details
