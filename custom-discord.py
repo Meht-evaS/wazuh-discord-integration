@@ -3,7 +3,7 @@
 import sys
 import json
 import pytz
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -79,6 +79,15 @@ debug(f"\n\n{'#'*30}\nrule_id: {rule_id}\n{'#'*30}\n")
 if (rule_id == 100015 or rule_id == 100011 or rule_id == 100008):
     debug("Trovate regole scraping social con DANGER_LEVEL='INFO'. Skip invio notifica Discord...")
     sys.exit(0)
+
+# exit se alert ISIS_WATCH e data evento diversa da data di ieri (serve soprattutto per evitare il flood della prima esecuzione)
+if (rule_id == 100004):
+    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    data_alert = alert_json["data"]["_id"]
+
+    if (data_alert != yesterday):
+        debug(f"Trovata alert ISIS_WATCH con data_alert != yesterday ({data_alert} -- {yesterday}). Skip invio notifica Discord...")
+        sys.exit(0)
 
 # extract alert level
 alert_level = int(alert_json["rule"]["level"])
