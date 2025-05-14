@@ -144,15 +144,15 @@ if (len(str(alert_json)) > 4096):
     tmp_alert_json = {}
     tmp_alert_json['too_long_alert'] = "Nella seguente alert vengono mostrate solo le parti salienti in quanto il messaggio eccedeva la dimensione massima consentita da Discord (4096 char)"
     tmp_alert_json['timestamp'] = alert_json['timestamp']
+    tmp_alert_json['full_log'] = alert_json['full_log'] 
 
-    if (len(alert_json['full_log']) > 3886): # 4096 - 210 char (len fissa struttura)
-        debug("Anche la sola field alert_json['full_log'] è più lunga di 4096 char quindi non verrà inviata\n")
+    if (len(str(tmp_alert_json)) > 4096):
+        debug("Anche con la sola field alert_json['full_log'] si superano i 4096 char, quindi l'alert non verrà inviata\n")
+        tmp_alert_json.pop('full_log')
         tmp_alert_json['decoder'] = alert_json['decoder']
         tmp_alert_json['id'] = alert_json['id']
-    else:
-        tmp_alert_json['full_log'] = alert_json['full_log']
 
-    debug(f"tmp_alert_json: {tmp_alert_json}\n")
+    #debug(f"tmp_alert_json: {tmp_alert_json}\n")
     alert_json = tmp_alert_json
     debug(f"NUOVA alert_json: {alert_json}\n")
 
@@ -171,12 +171,12 @@ try:
                 "value": agent_,
                 "inline": True
             },
-            { 
+            {
                 "name": "Alert level",
                 "value": alert_level,
                 "inline": True
             },
-            { 
+            {
                 "name": "Received from",
                 "value": received_from,
                 "inline": True
