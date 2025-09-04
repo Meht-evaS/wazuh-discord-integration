@@ -24,11 +24,11 @@ ossec.conf configuration structure
  </integration>
 """
 
-# PER VEDERE LE PRINT DI DEBUG INSIEME AI LOG DEL CONTAINER IN STDOUT SI DEVE ESEGUIRE IL SEGUENTE COMANDO:
-#    - /var/ossec/bin/wazuh-integratord -dd   ## DEBUG vero e proprio
-# Altrimenti tutte le print di debug saranno disponibili in '/var/ossec/logs/integrations.log'
+# TO SEE DEBUG PRINTS ALONG WITH CONTAINER LOGS IN STDOUT, YOU SHOULD RUN THE FOLLOWING COMMAND:
+#    - /var/ossec/bin/wazuh-integratord -dd   ## Real DEBUG
+# Otherwise all debug prints will be available in '/var/ossec/logs/integrations.log'
 
-# Invio alert a DISCORD x DEBUG o errori
+# Send alerts to DISCORD for DEBUG or errors
 def send_alert(hook_url, content, title, color, description, fields):
     payload = json.dumps({
         "content": content,
@@ -77,16 +77,16 @@ rule_id = int(alert_json["rule"]["id"])
 debug(f"\n\n{'#'*30}\nrule_id: {rule_id}\n{'#'*30}\n")
 
 if (rule_id == 100015 or rule_id == 100011 or rule_id == 100008):
-    debug("Trovate regole scraping social con DANGER_LEVEL='INFO'. Skip invio notifica Discord...")
+    debug("Found social scraping rules with DANGER_LEVEL='INFO'. Skip sending Discord notifications...")
     sys.exit(0)
 
-# exit se alert ISIS_WATCH e data evento diversa da data di ieri (serve soprattutto per evitare il flood della prima esecuzione)
+# exit if ISIS_WATCH alert and event date different from yesterday's date (this is mainly used to avoid flooding on the first run ever)
 if (rule_id == 100004):
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    data_alert = alert_json["data"]["_id"]
+    alert_date = alert_json["data"]["_id"]
 
-    if (data_alert != yesterday):
-        debug(f"Trovata alert ISIS_WATCH con data_alert != yesterday ({data_alert} -- {yesterday}). Skip invio notifica Discord...")
+    if (alert_date != yesterday):
+        debug(f"Found ISIS_WATCH alert with alert_date != yesterday ({alert_date} -- {yesterday}). Skip sending Discord notification...")
         sys.exit(0)
 
 # extract alert level
@@ -133,28 +133,27 @@ elif(alert_level >= 5 and alert_level <= 7):
 else:
     color = colors.RED
 
-# set color for specific alert (regole con DANGER_LEVEL='DANGER')
+# set color for specific alert (rules with DANGER_LEVEL='DANGER')
 if (rule_id == 100013 or rule_id == 100009 or rule_id == 100006):
     color = colors.RED
 
 # combine message details
 ## max description lenght: 4096 char - Source: https://discord.com/developers/docs/resources/message
 if (len(str(alert_json)) > 4096):
-    debug("L'alert che si voleva inviare è più lunga di 4096 char quindi verranno inviate solo le parti principali\n")
+    debug("The alert you wanted to send is longer than 4096 chars so only the main parts will be sent\n")
     tmp_alert_json = {}
-    tmp_alert_json['too_long_alert'] = "Nella seguente alert vengono mostrate solo le parti salienti in quanto il messaggio eccedeva la dimensione massima consentita da Discord (4096 char)"
+    tmp_alert_json['too_long_alert'] = "In the following alert, only the salient parts are shown as the message exceeded the maximum size allowed by Discord (4096 chars)."
     tmp_alert_json['timestamp'] = alert_json['timestamp']
     tmp_alert_json['full_log'] = alert_json['full_log'] 
 
     if (len(str(tmp_alert_json)) > 4096):
-        debug("Anche con la sola field alert_json['full_log'] si superano i 4096 char, quindi l'alert non verrà inviata\n")
+        debug("Even with just the alert_json['full_log'] field, the 4096 chars are exceeded, so the alert will not be sent.\n")
         tmp_alert_json.pop('full_log')
         tmp_alert_json['decoder'] = alert_json['decoder']
         tmp_alert_json['id'] = alert_json['id']
 
-    #debug(f"tmp_alert_json: {tmp_alert_json}\n")
     alert_json = tmp_alert_json
-    debug(f"NUOVA alert_json: {alert_json}\n")
+    debug(f"NEW alert_json: {alert_json}\n")
 
 debug(f"Description alert (alert_json): {str(alert_json)}\n\nlen(str(alert_json)): {len(str(alert_json))}")
 
@@ -191,12 +190,12 @@ try:
     })
 except Exception as e:
     if rule_id:
-        error = f"{get_time()} ERRORE: Non si è riusciti a inviare l'alert a Discord per la rule {rule_id}.\nErrore durante la costruzione del payload: {e}"
+        error = f"{get_time()} ERROR: Failed to send alert to Discord for rule {rule_id}.\nError building payload: {e}"
     else:
-        error = f"{get_time()} ERRORE: Non si è riusciti a inviare l'alert a Discord.\nErrore durante la costruzione del payload: {e}"
+        error = f"{get_time()} ERROR: Failed to send alert to Discord.\nError building payload: {e}"
 
     debug(error)
-    send_alert(hook_url, "", "Errore invio alert!", colors.RED, error, [{"name": "Full error","value": str(e),"inline": False},{"name": "Hint","value": "Guarda il log in `/var/ossec/logs/integrations.log`","inline": False}])
+    send_alert(hook_url, "", "Error sending alert!", colors.RED, error, [{"name": "Full error","value": str(e),"inline": False},{"name": "Hint","value": "Look at the log in `/var/ossec/logs/integrations.log`","inline": False}])
 
 debug(f"payload: {payload}\n")
 
@@ -207,11 +206,11 @@ try:
     r.raise_for_status()
 except requests.RequestException as e:
     if rule_id:
-        error = f"{get_time()} ERRORE: Non si è riusciti a inviare l'alert a Discord per la rule {rule_id}."
+        error = f"{get_time()} ERROR: Failed to send alert to Discord for rule {rule_id}."
     else:
-        error = f"{get_time()} ERRORE: Non si è riusciti a inviare l'alert a Discord."
+        error = f"{get_time()} ERROR: Failed to send alert to Discord."
 
     debug(f"{error}\nFull error: {str(e)}\n")
-    send_alert(hook_url, "", "Errore invio alert!", colors.RED, error, [{"name": "Full error","value": str(e),"inline": False},{"name": "Hint","value": "Guarda il log in `/var/ossec/logs/integrations.log`","inline": False}])
+    send_alert(hook_url, "", "Error sending alert!", colors.RED, error, [{"name": "Full error","value": str(e),"inline": False},{"name": "Hint","value": "Look at the log in  `/var/ossec/logs/integrations.log`","inline": False}])
 
 sys.exit(0)
