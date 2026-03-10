@@ -1,8 +1,11 @@
 #/usr/bin/env python3
 
+import re
+import os
 import sys
 import json
 import pytz
+import configparser
 from datetime import datetime, timedelta
 
 import requests
@@ -22,6 +25,15 @@ ossec.conf configuration structure
      <hook_url>https://discord.com/api/webhooks/XXXXXXXXXXX</hook_url>
      <alert_format>json</alert_format>
  </integration>
+
+See also the routing configuration file: /var/ossec/integrations/custom-discord.conf
+ [group_unipg]
+ webhook=...
+ keywords=...
+
+ [group_xyz]
+ webhook=...
+ keywords=...
 """
 
 # TO SEE DEBUG PRINTS ALONG WITH CONTAINER LOGS IN STDOUT, YOU SHOULD RUN THE FOLLOWING COMMAND:
@@ -55,6 +67,56 @@ def get_time():
     date = datetime.now()
     return date.astimezone(rome_tz).strftime("%Y-%m-%d %H:%M:%S")
 
+def load_routing_groups():
+    """
+    Reads /var/ossec/integrations/custom-discord.conf and returns a list of routing groups, 
+    each with a webhook and keywords. Each section of the ".conf" file that begins with 'group_' 
+    is considered a routing group. 
+    Returns: [{"name": "group_unipg", "webhook": "https://...", "keywords": ["UniPG", ...]}, ...]
+    """
+    config = configparser.ConfigParser()
+    config_path = "/var/ossec/integrations/custom-discord.conf"
+    groups = []
+    if not os.path.exists(config_path):
+        debug(f"[CONFIG] File not found: {config_path}. Using only the default webhook.")
+        return groups
+
+    config.read(config_path)
+    for section in config.sections():
+        if section.lower().startswith("group_"):
+            try:
+                webhook = config.get(section, "webhook").strip()
+                raw_keywords = config.get(section, "keywords")
+                keywords = [k.strip() for k in raw_keywords.split(",") if k.strip()]
+                if webhook and keywords:
+                    groups.append({"name": section, "webhook": webhook, "keywords": keywords})
+                    debug(f"[CONFIG] Group loaded: '{section}' with {len(keywords)} keyword(s).")
+            except (configparser.NoOptionError, configparser.Error) as e:
+                debug(f"[CONFIG] Error in group '{section}': {e}")
+    return groups
+
+def resolve_webhooks(default_hook_url, alert_json, routing_groups):
+    """
+    Determine the list of webhooks to send the alert to.
+        - If the alert contains keywords of one or more groups, also send the alert to the webhooks of those groups
+        - If no group matches, send to the default webhook (specified in ossec.conf)
+    """
+    alert_str = str(alert_json)
+    matched_webhooks = []
+    matched_any = False
+    for group in routing_groups:
+        pattern = re.compile("|".join(re.escape(keyword) for keyword in group["keywords"]),re.IGNORECASE)
+        if pattern.search(alert_str):
+            debug(f"[ROUTING] Match in group '{group['name']}'. Adding webhook: {group['webhook']}")
+            matched_webhooks.append(group["webhook"])
+            matched_any = True
+    if not matched_any:
+        # No group matched: use the default webhook
+        debug(f"[ROUTING] No match found. Using default webhook.")
+        matched_webhooks.append(default_hook_url)
+    # If you don't want to ALWAYS send to the default webhook as well (in addition to the matched groups), uncomment the following line:
+    matched_webhooks.append(default_hook_url)
+    return list(set(matched_webhooks))  # deduplicate any duplicates
 
 
 debug(f"\n\n\n{'#'*200}\n")
@@ -199,18 +261,24 @@ except Exception as e:
 
 debug(f"payload: {payload}\n")
 
-# send message to Discord
-try:
-    r = requests.post(hook_url, data=payload, headers={"content-type": "application/json"})
-    debug(f"r.status_code: {r.status_code}, r.text: {r.text}")
-    r.raise_for_status()
-except requests.RequestException as e:
-    if rule_id:
-        error = f"{get_time()} ERROR: Failed to send alert to Discord for rule {rule_id}."
-    else:
-        error = f"{get_time()} ERROR: Failed to send alert to Discord."
+# Load the routing groups from the local configuration file
+routing_groups = load_routing_groups()
 
-    debug(f"{error}\nFull error: {str(e)}\n")
-    send_alert(hook_url, "", "Error sending alert!", colors.RED, error, [{"name": "Full error","value": str(e),"inline": False},{"name": "Hint","value": "Look at the log in  `/var/ossec/logs/integrations.log`","inline": False}])
+# Find the list of webhooks to which to send the alert
+target_webhooks = resolve_webhooks(hook_url, alert_json, routing_groups)
+debug(f"[ROUTING] Webhook target: {target_webhooks}")
+# Send the alert to all identified webhooks
+for target_url in target_webhooks:
+    try:
+        r = requests.post(target_url, data=payload, headers={"content-type": "application/json"})
+        debug(f"[SEND] webhook={target_url} | status={r.status_code} | response={r.text}")
+        r.raise_for_status()
+    except requests.RequestException as e:
+        if rule_id:
+            error = f"{get_time()} ERROR: Failed to send alert to Discord for rule {rule_id}. Webhook: {target_url}"
+        else:
+            error = f"{get_time()} ERROR: Failed to send alert to Discord. Webhook: {target_url}"
+            debug(f"{error}\nFull error: {str(e)}\n")
+            send_alert(hook_url, "", "Error sending alert!", colors.RED, error, [{"name": "Full error","value": str(e),"inline": False},{"name": "Hint","value": "Look at the log in  `/var/ossec/logs/integrations.log`","inline": False}])
 
 sys.exit(0)
