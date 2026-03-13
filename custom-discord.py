@@ -5,6 +5,7 @@ import os
 import sys
 import json
 import pytz
+import copy
 import configparser
 from datetime import datetime, timedelta
 
@@ -133,6 +134,8 @@ hook_url = sys.argv[3]
 with open(alert_file) as f:
     alert_json = json.loads(f.read())
     debug(f"alert_json: {alert_json}\n")
+
+full_alert_json = copy.deepcopy(alert_json)
 
 # extract rule id
 rule_id = int(alert_json["rule"]["id"])
@@ -265,7 +268,7 @@ debug(f"payload: {payload}\n")
 routing_groups = load_routing_groups()
 
 # Find the list of webhooks to which to send the alert
-target_webhooks = resolve_webhooks(hook_url, alert_json, routing_groups)
+target_webhooks = resolve_webhooks(hook_url, full_alert_json, routing_groups)
 debug(f"[ROUTING] Webhook target: {target_webhooks}")
 # Send the alert to all identified webhooks
 for target_url in target_webhooks:
