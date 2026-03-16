@@ -106,7 +106,7 @@ def resolve_webhooks(default_hook_url, alert_json, routing_groups):
     matched_webhooks = []
     matched_any = False
     for group in routing_groups:
-        pattern = re.compile("|".join(re.escape(keyword) for keyword in group["keywords"]),re.IGNORECASE)
+        pattern = re.compile(r"\b(?:%s)\b" % "|".join(re.escape(keyword) for keyword in group["keywords"]),re.IGNORECASE)
         if pattern.search(alert_str):
             debug(f"[ROUTING] Match in group '{group['name']}'. Adding webhook: {group['webhook']}")
             matched_webhooks.append(group["webhook"])
